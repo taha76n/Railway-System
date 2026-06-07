@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
@@ -8,6 +9,8 @@ import { logger } from "./configs/logger.js";
 import { reqLogger } from "./middlewares/req.middleware.js";
 import { corsMiddleware } from "./middlewares/cors.middleware.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
+
+import bookingRoutes from "./routes/booking.routes.js"
 
 const app = express();
 
@@ -35,6 +38,8 @@ app.get("/", (req, res) => {
 app.get("/health", (req, res) => {
   res.status(200).json({ message: "ok" });
 });
+
+app.use(bookingRoutes);
 
 app.use(errorHandler);
 
