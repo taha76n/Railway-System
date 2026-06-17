@@ -69,7 +69,7 @@ const inventoryClient = {
     });
   },
 
-  async holdSeats() {
+  async holdSeats(scheduleId, seatIds, userId, ttlSeconds, fromSeq, toSeq) {
     return withRetry(
       async (scheduleId, seatIds, userId, ttlSeconds, fromSeq, toSeq) => {
         const { data } = await client.post("/seats/lock", {

@@ -39,12 +39,12 @@ const bookingSchema = new mongoose.Schema(
     userId: {
       type: String,
       required: true,
-      index: true
+      index: true,
     },
     scheduleId: {
       type: String,
       required: true,
-      index: true
+      index: true,
     },
     trainId: {
       type: String,
@@ -80,57 +80,50 @@ const bookingSchema = new mongoose.Schema(
     },
     totalAmount: {
       type: Number,
-      default: 0
+      default: 0,
     },
     seatCount: {
       type: Number,
       required: true,
     },
     fromStationId: {
-      type: String      // --- SEGMENT BOOKING: boarding station ID
+      type: String, // --- SEGMENT BOOKING: boarding station ID
     },
     toStationId: {
-      type: String     // --- SEGMENT BOOKING: alighting station ID
-
+      type: String, // --- SEGMENT BOOKING: alighting station ID
     },
     fromSeq: {
-      type: Number    // --- SEGMENT BOOKING: sequence number of boarding station
+      type: Number, // --- SEGMENT BOOKING: sequence number of boarding station
     },
     toSeq: {
-      type: Number   // --- SEGMENT BOOKING: sequence number of alighting station
+      type: Number, // --- SEGMENT BOOKING: sequence number of alighting station
     },
     idempotencyKey: {
       type: String,
       required: true,
-      unique: true
-      
+      unique: true,
     },
     paymentOrderId: {
       type: String,
       sparse: true,
-      unique: true
-
+      unique: true,
     },
     lockExpiresAt: {
-      type: Date
-      
+      type: Date,
     },
     failureReason: {
-      type: String
-
+      type: String,
     },
     version: {
       type: Number,
-      default: 0
-    }
+      default: 0,
+    },
   },
   { timestamps: true }
 );
 
-bookingSchema.index({lockExpiresAt: 1, status: 1});
+bookingSchema.index({ lockExpiresAt: 1, status: 1 });
 
 const Booking = mongoose.model("Booking", bookingSchema);
 
 export default Booking;
-
-

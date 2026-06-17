@@ -28,12 +28,12 @@ const sagaLogSchema = new mongoose.Schema(
     step: {
       type: String,
       enum: ["HOLD_SEATS", "CREATE_PAYMENT", "CONFIRM_SEATS", "COMPLETE"],
-      required: true
+      required: true,
     },
     status: {
       type: String,
       enum: ["PENDING", "COMPLETED", "COMPENSATING", "COMPENSATED", "FAILED"],
-      default: "PENDING"
+      default: "PENDING",
     },
     request: {
       type: JSON,
@@ -47,7 +47,6 @@ const sagaLogSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-
 
 const SagaLog = mongoose.model("SagaLog", sagaLogSchema);
 
