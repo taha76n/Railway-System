@@ -14,34 +14,32 @@ import mongoose from "mongoose";
 //   @@map("passengers")
 // }
 
-const passengerSchema  = new mongoose.Schema({
+const passengerSchema = new mongoose.Schema({
   bookingId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Booking",
-    required: true
+    required: true,
   },
   name: {
     type: String,
-    required: true
+    required: true,
   },
   age: {
     type: Number,
-    required: true
+    required: true,
   },
   gender: {
     type: String,
-    required: true
-
+    required: true,
   },
   seatId: {
-    type: String
-
+    type: String,
   },
   createdAt: {
     type: Date,
-    default: Date.now
-  }
-})
+    default: Date.now,
+  },
+});
 
 const Passenger = mongoose.model("Passenger", passengerSchema);
 
