@@ -1,3 +1,5 @@
+import { DLQ_MAX_RETRIES } from "../constants/kafka-topics.js";
+
 /**
  * Dead-Letter Queue (DLQ) handler for Kafka consumers.
  *
@@ -6,11 +8,9 @@
  * and the consumer moves on instead of blocking forever.
  *
  * Usage (in any consumer):
- *   const { withDLQ } = require('../../../../shared/utils/dlqHandler');
+ *   import { withDLQ } from "../../../../shared/utils/dlqHandler";
  *   await consumer.run({ eachMessage: withDLQ(producer, dlqTopic, logger, handler) });
  */
-
-const { DLQ_MAX_RETRIES } = require('../constants/kafka-topics');
 
 /**
  * @param {import('kafkajs').Producer} producer  – Kafka producer (for sending to DLQ)
@@ -98,4 +98,7 @@ async function sendToDLQ(producer, dlqTopic, originalTopic, partition, message, 
      }
 }
 
-module.exports = { withDLQ };
+export {
+     withDLQ,
+     sendToDLQ
+}

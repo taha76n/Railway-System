@@ -728,16 +728,16 @@ const handlePaymentSuccess = async (
 };
 
 // ─── Handle Payment Failure (Kafka consumer) ─────────────────────────────────
- 
+
 const handlePaymentFailure = async (paymentOrderId, reason) => {
   const booking = await Booking.findOne({ paymentOrderId }).lean();
- 
+
   if (!booking) {
     // No matching booking — nothing to do, log for visibility
     logger.warn(`No booking found for paymentOrderId: ${paymentOrderId}`);
     return;
   }
- 
+
   if (
     booking.status === "CANCELLED" ||
     booking.status === "EXPIRED" ||
@@ -747,19 +747,19 @@ const handlePaymentFailure = async (paymentOrderId, reason) => {
     logger.info(`Booking ${booking._id} already in terminal state: ${booking.status}`);
     return;
   }
- 
+
   if (booking.status !== "PAYMENT_PENDING") {
     // Booking moved to some other state we don't expect here — bail safely
     logger.warn(`Booking ${booking._id} in unexpected status: ${booking.status}`);
     return;
   }
- 
+
   // fetch seats separately (child-referencing schema) and attach to booking
   const seats = await BookingSeat.find({ bookingId: booking._id });
   booking.seats = seats;
- 
+
   const seatIds = booking.seats.map((s) => s.seatId).sort();
- 
+
   try {
     // claim this booking before compensating — protects against a race with
     // cancelBooking or the expiry job touching the same booking concurrently
@@ -776,13 +776,13 @@ const handlePaymentFailure = async (paymentOrderId, reason) => {
     // genuine unexpected error — let it propagate, no compensation state to clean up yet
     throw error;
   }
- 
+
   // undo the seat hold — payment never succeeded, so nothing to refund
   await sagaService.compensateHoldSeats(booking, seatIds);
- 
+
   // release the Redis locks for these seats
   await forceReleaseSeatLocks(booking.scheduleId, seatIds, booking.fromSeq, booking.toSeq);
- 
+
   try {
     // notify the user — isolated try/catch, must not undo the FAILED status above
     const userInfo = await fetchUserForNotification(booking.userId);
@@ -800,40 +800,40 @@ const handlePaymentFailure = async (paymentOrderId, reason) => {
       error: err.message,
     });
   }
- 
+
   logger.info(`Booking ${booking._id} failed: ${reason}`);
 };
- 
+
 // ─── Cancel Booking ──────────────────────────────────────────────────────────
- 
+
 const cancelBooking = async (bookingId, userId) => {
- 
+
   const booking = await Booking.findById(bookingId).lean();
- 
+
   if (!booking) {
     throw new NotFoundError(`Booking not found for bookingId ${bookingId}`);
   }
- 
+
   if (booking.userId !== userId) {
     // deliberately the same NotFoundError as "doesn't exist" — don't leak
     // that this booking exists but belongs to someone else
     throw new NotFoundError(`Booking not found for userId ${userId}`);
   }
- 
+
   if (
     ["CANCELLED", "CANCELLING", "FAILED", "EXPIRED", "CONFIRMING"].includes(booking.status)
   ) {
     // can't cancel something already terminal or already mid-transition
     throw new ConflictError(`Booking is already ${booking.status}`);
   }
- 
+
   const seats = await BookingSeat.find({ bookingId });
   booking.seats = seats;
- 
+
   const seatIds = booking.seats.map((s) => s.seatId).sort();
- 
+
   let refundInitiated = false;
- 
+
   try {
     // claim ownership before touching anything external — prevents racing
     // with a payment webhook or the expiry job hitting this same booking
@@ -851,7 +851,7 @@ const cancelBooking = async (bookingId, userId) => {
     }
     throw error;
   }
- 
+
   if (booking.status === "CONFIRMED") {
     // confirmed booking — must release seats in inventory before refunding
     try {
@@ -860,7 +860,7 @@ const cancelBooking = async (bookingId, userId) => {
       logger.error(`Failed to release seats in inventory for booking ${booking._id}`, {
         error: error.message,
       });
- 
+
       // inventory call failed — roll back our CANCELLING claim so the user can retry
       await Booking.updateMany(
         { _id: bookingId, userId, status: "CANCELLING" },
@@ -871,7 +871,7 @@ const cancelBooking = async (bookingId, userId) => {
       );
       throw error;
     }
- 
+
     if (booking.paymentOrderId) {
       try {
         const idempotencyKey = `${booking._id}-cancel-refund`;
@@ -903,15 +903,15 @@ const cancelBooking = async (bookingId, userId) => {
       logger.error(`Failed to release seats during cancel`, { error: error.message });
     }
   }
- 
+
   // final transition — CANCELLING is now confirmed complete
   await Booking.updateMany(
     { _id: bookingId, status: "CANCELLING" },
     { $set: { status: "CANCELLED" }, $inc: { version: 1 } }
   );
- 
+
   await forceReleaseSeatLocks(booking.scheduleId, seatIds, booking.fromSeq, booking.toSeq);
- 
+
   try {
     // notification — isolated, must not undo the cancellation above
     const userInfo = await fetchUserForNotification(booking.userId);
@@ -930,37 +930,37 @@ const cancelBooking = async (bookingId, userId) => {
       error: err.message,
     });
   }
- 
+
   logger.info(`Booking ${booking._id} cancelled by user ${userId}`);
- 
+
   return {
     bookingId: booking._id,
     status: "CANCELLED",
     refundInitiated,
   };
 };
- 
+
 // ─── Get Booking ─────────────────────────────────────────────────────────────
- 
+
 const getBooking = async (bookingId, userId) => {
 
   const booking = await Booking.findOne({ _id: bookingId }).lean();
- 
+
   if (!booking || booking.userId !== userId) {
     // same NotFoundError for both cases — don't leak existence to non-owners
     throw new NotFoundError("Booking not found");
   }
- 
+
   //.sort("asc") isn't valid Mongoose syntax — needs a field name,
   // not the direction alone. { seatNumber: 1 } is the correct ascending sort.
   const [seats, passengers] = await Promise.all([
     BookingSeat.find({ bookingId }).sort({ seatNumber: 1 }),
     Passenger.find({ bookingId }),
   ]);
- 
+
   booking.seats = seats;
   booking.passengers = passengers;
- 
+
   return {
     id: booking._id,
     status: booking.status,
@@ -995,7 +995,7 @@ const getBooking = async (bookingId, userId) => {
     updatedAt: booking.updatedAt,
   };
 };
- 
+
 // ─── Get User Bookings (paginated list) ──────────────────────────────────────
 // Returns a page of a user's bookings, newest first, with optional status filter.
 //
@@ -1025,21 +1025,21 @@ const getBooking = async (bookingId, userId) => {
 // one for "give me this page's data," one for "tell me the total count."
 // We fire them both with Promise.all so they run concurrently rather than
 // one waiting for the other — they don't depend on each other's results.
- 
+
 const getUserBookings = async (userId, { status, page = 1, limit = 10 } = {}) => {
   // destructuring with a default: if the caller passes NOTHING as the second
   // argument, `{} = {}` falls back to an empty object, which itself falls
   // back to page=1, limit=10 individually. Prevents a crash if called as
   // getUserBookings(userId) with no options object at all.
- 
+
   const skip = (page - 1) * limit;
   // the core pagination math explained above — how many documents to skip
   // before collecting this page's results
- 
+
   const filter = { userId };
   // base filter: always scoped to this user — a user must never see another
   // user's bookings regardless of what other filters are applied
- 
+
   if (status) {
     // optional status filter — only added to the query if the caller actually
     // passed one. toUpperCase() normalizes "confirmed" or "Confirmed" from the
@@ -1048,7 +1048,7 @@ const getUserBookings = async (userId, { status, page = 1, limit = 10 } = {}) =>
     // against a client sending lowercase and getting zero results back.
     filter.status = status.toUpperCase();
   }
- 
+
   // run both queries concurrently: page of bookings + total count.
   // These are independent — the count doesn't need the bookings, and the
   // bookings don't need the count. Running them in parallel instead of
@@ -1063,7 +1063,7 @@ const getUserBookings = async (userId, { status, page = 1, limit = 10 } = {}) =>
       .skip(skip)     // jump over the previous pages' worth of documents
       .limit(limit)   // stop after collecting this page's worth
       .lean(),
- 
+
     // query 2: count ALL documents matching `filter`, ignoring skip/limit
     // entirely. This tells us how many bookings exist in total across every
     // page — needed to compute totalPages below. Note: countDocuments must
@@ -1072,7 +1072,7 @@ const getUserBookings = async (userId, { status, page = 1, limit = 10 } = {}) =>
     // bookings when the user only asked for CONFIRMED ones).
     Booking.countDocuments(filter),
   ]);
- 
+
   // for each booking on this page, we still need its seats and passengers —
   // child-referencing schema means these aren't embedded, so we fetch them
   // per booking. Promise.all here runs all these lookups concurrently across
@@ -1089,7 +1089,7 @@ const getUserBookings = async (userId, { status, page = 1, limit = 10 } = {}) =>
       // in the inventory service
     })
   );
- 
+
   return {
     bookings: bookingsWithDetails.map((b) => ({
       id: b._id,
@@ -1128,42 +1128,42 @@ const getUserBookings = async (userId, { status, page = 1, limit = 10 } = {}) =>
     },
   };
 };
- 
+
 // ─── Verify Payment (client-side verification after Safepay checkout) ───────
- 
+
 const verifyPayment = async (bookingId, userId, safepayPaymentId, safepaySignature) => {
   const booking = await Booking.findOne({ _id: bookingId }).lean();
- 
+
   if (!booking || booking.userId !== userId) {
     throw new NotFoundError("Booking not found");
   }
- 
+
   if (!booking.paymentOrderId) {
     throw new BadRequestError("Booking has no payment order");
   }
- 
+
   if (booking.status === "CONFIRMED") {
     return { bookingId: booking._id, status: "CONFIRMED", message: "Already confirmed" };
   }
- 
+
   if (booking.status !== "PAYMENT_PENDING") {
     throw new ConflictError(`Booking is in ${booking.status} status, cannot verify payment`);
   }
- 
+
   const result = await paymentClient.verifyPayment(
     booking.paymentOrderId,
     safepayPaymentId,
     safepaySignature
   );
- 
+
   logger.info(`Payment verified for booking ${bookingId}`, { result });
- 
+
   return {
     bookingId: booking._id,
     paymentStatus: result.status,
   };
 };
- 
+
 // ─── Handle Schedule Cancelled (Kafka consumer) ─────────────────────────────
 // Fired when the SCHEDULE itself is cancelled by an admin (e.g. train
 // breakdown, route suspension) — NOT a user-initiated cancellation. This must
@@ -1173,7 +1173,7 @@ const verifyPayment = async (bookingId, userId, safepayPaymentId, safepaySignatu
 // single-booking functions above: a fetch-many, then a for-loop that handles
 // each booking independently, with its own try/catch PER booking so one
 // failure doesn't stop the rest from being processed.
- 
+
 const handleScheduleCancelled = async (scheduleId) => {
   if (!scheduleId) {
     // defensive guard — this function is triggered by a Kafka event payload;
@@ -1183,7 +1183,7 @@ const handleScheduleCancelled = async (scheduleId) => {
     logger.warn("handleScheduleCancelled called without scheduleId");
     return;
   }
- 
+
   // We fetch every booking on this schedule that is currently in an "active"
   // state — meaning it hasn't already reached a terminal state. A booking
   // that's already CANCELLED, FAILED, or EXPIRED doesn't need to be touched —
@@ -1192,7 +1192,7 @@ const handleScheduleCancelled = async (scheduleId) => {
     scheduleId,
     status: { $in: ["PENDING", "SEATS_HELD", "PAYMENT_PENDING", "CONFIRMED"] },
   }).lean();
- 
+
   if (activeBookings.length === 0) {
     // nothing to do — every booking on this schedule was already resolved
     // before the cancellation event arrived (rare, but possible if the admin
@@ -1201,12 +1201,12 @@ const handleScheduleCancelled = async (scheduleId) => {
     logger.info(`No active bookings to cancel for schedule ${scheduleId}`);
     return;
   }
- 
+
   logger.info(
     `Cancelling ${activeBookings.length} active booking(s) due to schedule cancellation`,
     { scheduleId }
   );
- 
+
   // Process each booking ONE AT A TIME (sequential for...of, not
   // Promise.all/parallel). This is deliberate: each booking involves its own
   // external calls (refund, lock release, notification) and we want full
@@ -1238,7 +1238,7 @@ const handleScheduleCancelled = async (scheduleId) => {
           $inc: { version: 1 },
         }
       );
- 
+
 
       if (claimed.matchedCount === 0) {
         // someone else already handled this booking between our fetch and
@@ -1248,17 +1248,17 @@ const handleScheduleCancelled = async (scheduleId) => {
         // `continue` skips the rest of THIS iteration only — the for loop
         // moves on to the next booking. It does not exit the loop entirely.
       }
- 
+
       // fetch this specific booking's seats — needed to release Redis locks below
       const seats = await BookingSeat.find({ bookingId: booking._id });
       const seatIds = seats.map((s) => s.seatId).sort();
- 
+
       // release any Redis locks still held for these seats — this is a
       // "force" release (no token needed) because, like the Kafka payment
       // handlers, this code runs in a consumer process that never held the
       // original lock token to begin with
       await forceReleaseSeatLocks(booking.scheduleId, seatIds, booking.fromSeq, booking.toSeq);
- 
+
       // only CONFIRMED bookings with an actual payment need a refund — a
       // booking still in PENDING/SEATS_HELD/PAYMENT_PENDING never completed
       // payment, so there's nothing to give back
@@ -1280,7 +1280,7 @@ const handleScheduleCancelled = async (scheduleId) => {
           );
         }
       }
- 
+
       try {
         // notify the affected user — isolated try/catch, must not undo the
         // cancellation that already happened above
@@ -1300,9 +1300,9 @@ const handleScheduleCancelled = async (scheduleId) => {
           error: err.message,
         });
       }
- 
+
       logger.info(`Booking ${booking._id} cancelled due to schedule cancellation`);
- 
+
     } catch (error) {
       // THIS is the outer safety net for the entire per-booking iteration.
       // If anything unexpected throws anywhere above for THIS booking (not
@@ -1318,7 +1318,7 @@ const handleScheduleCancelled = async (scheduleId) => {
   }
 };
 
-export const bokingService = {
+export const bookingService = {
   createBooking,
   handlePaymentSuccess,
   handlePaymentFailure,

@@ -1,6 +1,7 @@
 import { logger } from "../../configs/logger.js";
-import { consumer } from "../../configs/kafka.js";
+import { consumer, producer } from "../../configs/kafka.js";
 import { KAFKA_TOPICS } from "../../../../shared/constants/kafka-topics.js";
+import { withDLQ } from "../../../../shared/utils/dlqhandler.js";
 
 class SearchConsumer {
   async start() {
@@ -19,5 +20,39 @@ class SearchConsumer {
       ],
       fromBeginning: true,
     });
+
+    await consumer.run({
+      eachMessage: withDLQ(producer, KAFKA_TOPICS.DLQ_SEARCH, logger, async (topic, partition, message, parsedValue) => {
+
+        logger.info(`Processing ${topic}`, { partition, offset: message.offset });
+
+        switch (topic) {
+          case KAFKA_TOPICS.STATION_CREATED:
+            await searchService.indexStation(parsedValue);
+            break;
+          case KAFKA_TOPICS.ROUTE_CREATED:
+            await searchService.indexTrainRoute(parsedValue);
+            break;
+          case KAFKA_TOPICS.SCHEDULE_CREATED:
+            await searchService.indexSchedule(parsedValue);
+            break;
+          case KAFKA_TOPICS.SCHEDULE_CANCELLED:
+            await searchService.cancelSchedule(parsedValue);
+            break;
+          case KAFKA_TOPICS.SEAT_AVAILABILITY_UPDATED:
+            await searchService.updateSeatAvailability(parsedValue);
+            break;
+          default:
+            logger.warn(`Unknown topic: ${topic}`);
+        }
+
+      })
+    })
+
+    logger.info('Search consumer running...');
+
   }
 }
+
+
+export default new SearchConsumer();

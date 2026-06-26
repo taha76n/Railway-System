@@ -1,3 +1,4 @@
+import { KAFKA_TOPICS } from "../../../../shared/constants/kafka-topics.js";
 import { connectProducer, producer } from "../../configs/kafka.js";
 import { logger } from "../../configs/logger.js";
 
